@@ -16,6 +16,10 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+// 5. Routes
+app.use('/api/home', require('./routes/homeRoutes')); 
+app.use('/api/transactions', require('./routes/transactionRoutes'));
+
 // 5. Base Route (Health Check)
 app.get('/', (req, res) => {
   res.send('Budget Buddy API is running...');
