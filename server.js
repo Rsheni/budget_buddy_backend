@@ -19,6 +19,7 @@ app.use(cors());
 // 5. Routes
 app.use('/api/home', require('./routes/homeRoutes')); 
 app.use('/api/transactions', require('./routes/transactionRoutes'));
+app.use('/api/categories', require('./routes/categoryRoutes'));
 
 // 5. Base Route (Health Check)
 app.get('/', (req, res) => {

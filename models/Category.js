@@ -1,30 +1,37 @@
 const mongoose = require('mongoose');
 
 const CategorySchema = new mongoose.Schema({
-  // If null, it is a System Default category visible to everyone
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    default: null
-  },
-  categoryName: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  categoryType: {
-    type: String,
+    default: null },
+
+  categoryName: { 
+    type: String, 
+    required: true, 
+    trim: true },
+
+  categoryType: { 
+    type: String, 
     enum: ['income', 'expense'],
-    required: true
-  },
-  icon: {
+    required: true },
+ 
+  icon: { 
     type: String,
-    default: "default-icon"
-  },
+    default: "aa" },
+
+  color: { 
+    type: String, 
+    default: "#00D09E" },
+
+  monthlyLimit: { 
+    type: Number, 
+    default: 0 },
+  
   isDefault: {
-    type: Boolean,
-    default: false
-  }
+    type: Boolean, 
+    default: false }
+    
 }, { timestamps: true });
 
 module.exports = mongoose.model('Category', CategorySchema);

@@ -1,52 +1,68 @@
 const FinancialRecord = require('../models/FinancialRecord');
+const Category = require('../models/Category'); // <--- Imported ONCE here
 
-// @desc    Get Transactions (Selected Month) & Balance (Current Real-Time Month)
+// @desc    Get Transactions (Search, Filter, Date)
 const getTransactions = async (req, res) => {
   try {
-    const { month, year, type } = req.query;
+    const { month, year, type, categoryId, search, minAmount, maxAmount } = req.query;
 
-    // --- PART 1: The Transaction List (Dynamic based on User Selection) ---
     let listQuery = { type: type || 'income' };
-    
+
+    // 1. Category Filter
+    if (categoryId) listQuery.categoryId = categoryId;
+
+    // 2. Date Filter
     if (month && year) {
-      const listStartDate = new Date(year, month - 1, 1);
-      const listEndDate = new Date(year, month, 0, 23, 59, 59);
-      listQuery.date = { $gte: listStartDate, $lte: listEndDate };
+      const start = new Date(year, month - 1, 1);
+      const end = new Date(year, month, 0, 23, 59, 59);
+      listQuery.date = { $gte: start, $lte: end };
     }
 
-    const transactions = await FinancialRecord.find(listQuery).sort({ date: -1 });
+    // 3. Search Filter (Description)
+    if (search) {
+      listQuery.description = { $regex: search, $options: 'i' }; // Case-insensitive
+    }
+
+    // 4. Amount Range Filter
+    if (minAmount || maxAmount) {
+      listQuery.amount = {};
+      if (minAmount) listQuery.amount.$gte = Number(minAmount);
+      if (maxAmount) listQuery.amount.$lte = Number(maxAmount);
+    }
+
+    // Fetch & Populate
+    const transactions = await FinancialRecord.find(listQuery)
+      .sort({ date: -1 })
+      .populate('categoryId', 'categoryName icon color monthlyLimit'); 
+
     const listTotal = transactions.reduce((acc, item) => acc + item.amount, 0);
 
-    // --- PART 2: The Wallet Balance (Static - ALWAYS Current Month) ---
+    // Get Category Limit if specific category selected
+    let categoryLimit = 0;
+    if (categoryId) {
+        const cat = await Category.findById(categoryId);
+        if(cat) categoryLimit = cat.monthlyLimit;
+    }
+
+    // Real-Time Balance (Unchanged logic)
     const now = new Date();
-    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-
-    const currentMonthStats = await FinancialRecord.aggregate([
-      {
-        $match: {
-          date: { $gte: currentMonthStart, $lte: currentMonthEnd }
-        }
-      },
-      {
-        $group: {
-          _id: "$type",
-          total: { $sum: "$amount" }
-        }
-      }
+    const currStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const currEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    
+    const currentStats = await FinancialRecord.aggregate([
+      { $match: { date: { $gte: currStart, $lte: currEnd } } },
+      { $group: { _id: "$type", total: { $sum: "$amount" } } }
     ]);
+    const currIncome = currentStats.find(s => s._id === 'income')?.total || 0;
+    const currExpense = currentStats.find(s => s._id === 'expense')?.total || 0;
 
-    const currIncome = currentMonthStats.find(s => s._id === 'income')?.total || 0;
-    const currExpense = currentMonthStats.find(s => s._id === 'expense')?.total || 0;
-    const currentMonthBalance = currIncome - currExpense;
-
-    // --- PART 3: Send Response ---
     res.status(200).json({
-      transactions: transactions,
+      transactions,
       total: listTotal,
-      balance: currentMonthBalance,
-      currentMonthIncome: currIncome, 
-      currentMonthExpense: currExpense
+      balance: currIncome - currExpense,
+      currentMonthIncome: currIncome,
+      currentMonthExpense: currExpense,
+      categoryLimit
     });
 
   } catch (error) {
@@ -57,47 +73,68 @@ const getTransactions = async (req, res) => {
 // @desc    Add Transaction
 const addTransaction = async (req, res) => {
   try {
+    const { userId, amount, categoryName, categoryId, date, description, type, isRecurring, recurringFrequency } = req.body;
+
+    // --- LOGIC FIX: Ensure we have a VALID Category ID ---
+    let finalCategoryId = categoryId;
+
+    // 1. If no ID provided, try to find by Name & Type
+    if (!finalCategoryId) {
+        let cat = await Category.findOne({ categoryName: categoryName, categoryType: type });
+        
+        // 2. If not found by name, just grab the FIRST available category of that type
+        if (!cat) {
+            cat = await Category.findOne({ categoryType: type });
+        }
+
+        // 3. If STILL no category exists, create a default one
+        if (!cat) {
+             cat = await Category.create({
+                userId: userId || "65d4f8a9e4b0a1b2c3d4e5f6",
+                categoryName: "Others",
+                categoryType: type,
+                icon: "help",
+                color: "#CCCCCC",
+                isDefault: true
+             });
+        }
+        
+        finalCategoryId = cat._id;
+    }
+
     const newRecord = await FinancialRecord.create({
-      ...req.body,
-      categoryId: "65d4f8a9e4b0a1b2c3d4e5f6", // Mock ID
+      userId,
+      amount,
+      type,
+      date,
+      description,
+      categoryId: finalCategoryId, 
+      isRecurring: isRecurring || false,
+      recurringFrequency: recurringFrequency || 'never',
       receiptUrl: "" 
     });
+
     res.status(201).json(newRecord);
   } catch (error) {
+    console.error("Add Transaction Error:", error);
     res.status(500).json({ message: error.message });
   }
 };
 
 // @desc    Update Transaction
 const updateTransaction = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const updatedRecord = await FinancialRecord.findByIdAndUpdate(
-      id, 
-      req.body, 
-      { new: true }
-    );
-    res.status(200).json(updatedRecord);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
+    try {
+        const updatedRecord = await FinancialRecord.findByIdAndUpdate(req.params.id, req.body, { new: true });
+        res.status(200).json(updatedRecord);
+    } catch (error) { res.status(500).json({ message: error.message }); }
 };
 
 // @desc    Delete Transaction
 const deleteTransaction = async (req, res) => {
-  try {
-    const { id } = req.params;
-    await FinancialRecord.findByIdAndDelete(id);
-    res.status(200).json({ message: "Deleted successfully" });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
+    try {
+        await FinancialRecord.findByIdAndDelete(req.params.id);
+        res.status(200).json({ message: "Deleted successfully" });
+    } catch (error) { res.status(500).json({ message: error.message }); }
 };
 
-// *** THIS PART WAS MISSING OR INCORRECT BEFORE ***
-module.exports = { 
-  getTransactions, 
-  addTransaction, 
-  updateTransaction, 
-  deleteTransaction 
-};
+module.exports = { getTransactions, addTransaction, updateTransaction, deleteTransaction };
