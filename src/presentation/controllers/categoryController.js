@@ -1,4 +1,4 @@
-const Category = require('../models/Category');
+const Category = require('../../infrastructure/models/Category');
 
 // Get Categories
 const getCategories = async (req, res) => {
@@ -12,9 +12,9 @@ const getCategories = async (req, res) => {
 // Create Category
 const createCategory = async (req, res) => {
   try {
-    const newCategory = await Category.create({ 
-        ...req.body, 
-        userId: "65d4f8a9e4b0a1b2c3d4e5f6" 
+    const newCategory = await Category.create({
+      ...req.body,
+      userId: "65d4f8a9e4b0a1b2c3d4e5f6"
     });
     res.status(201).json(newCategory);
   } catch (error) { res.status(500).json({ message: error.message }); }
@@ -24,9 +24,9 @@ const createCategory = async (req, res) => {
 const updateCategory = async (req, res) => {
   try {
     const updatedCategory = await Category.findByIdAndUpdate(
-        req.params.id, 
-        req.body, 
-        { new: true } // Return updated doc
+      req.params.id,
+      req.body,
+      { new: true } // Return updated doc
     );
     res.status(200).json(updatedCategory);
   } catch (error) { res.status(500).json({ message: error.message }); }

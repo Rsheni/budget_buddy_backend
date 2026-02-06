@@ -1,7 +1,7 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
-const connectDB = require('./config/db');
+const connectDB = require('./src/infrastructure/db/db');
 
 // 1. Load Environment Variables
 dotenv.config();
@@ -17,9 +17,10 @@ app.use(express.json());
 app.use(cors());
 
 // 5. Routes
-app.use('/api/home', require('./routes/homeRoutes')); 
-app.use('/api/transactions', require('./routes/transactionRoutes'));
-app.use('/api/categories', require('./routes/categoryRoutes'));
+app.use('/api/auth', require('./src/presentation/routes/authRoutes'));
+app.use('/api/home', require('./src/presentation/routes/homeRoutes'));
+app.use('/api/transactions', require('./src/presentation/routes/transactionRoutes'));
+app.use('/api/categories', require('./src/presentation/routes/categoryRoutes'));
 
 // 5. Base Route (Health Check)
 app.get('/', (req, res) => {

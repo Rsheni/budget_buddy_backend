@@ -113,9 +113,9 @@
 
 // module.exports = { getHomeData };
 
-const FinancialRecord = require('../models/FinancialRecord');
-const FinancialGoal = require('../models/FinancialGoal'); // If you implement goals later
-const SharedExpense = require('../models/SharedExpense'); // If you implement groups later
+const FinancialRecord = require('../../infrastructure/models/FinancialRecord');
+const FinancialGoal = require('../../infrastructure/models/FinancialGoal');
+const SharedExpense = require('../../infrastructure/models/SharedExpense');
 
 // @desc    Get Real Dashboard Data (Personal, Goals, Shared)
 // @route   GET /api/home
@@ -135,7 +135,7 @@ const getHomeData = async (req, res) => {
     const recentTransactions = await FinancialRecord.find()
       .sort({ date: -1 }) // Newest first
       .limit(5)
-      .populate('categoryId', 'categoryName icon color'); 
+      .populate('categoryId', 'categoryName icon color');
 
     // Format transactions for the Frontend
     const formattedTransactions = recentTransactions.map(t => ({
@@ -155,7 +155,7 @@ const getHomeData = async (req, res) => {
     const goalsData = {
       totalSavings: 0,
       currency: 'Rs.',
-      list: [] 
+      list: []
     };
 
     const sharedData = {

@@ -1,5 +1,5 @@
-const FinancialRecord = require('../models/FinancialRecord');
-const Category = require('../models/Category'); // <--- Imported ONCE here
+const FinancialRecord = require('../../infrastructure/models/FinancialRecord');
+const Category = require('../../infrastructure/models/Category');
 
 // @desc    Get Transactions (Search, Filter, Date)
 const getTransactions = async (req, res) => {
@@ -33,22 +33,22 @@ const getTransactions = async (req, res) => {
     // Fetch & Populate
     const transactions = await FinancialRecord.find(listQuery)
       .sort({ date: -1 })
-      .populate('categoryId', 'categoryName icon color monthlyLimit'); 
+      .populate('categoryId', 'categoryName icon color monthlyLimit');
 
     const listTotal = transactions.reduce((acc, item) => acc + item.amount, 0);
 
     // Get Category Limit if specific category selected
     let categoryLimit = 0;
     if (categoryId) {
-        const cat = await Category.findById(categoryId);
-        if(cat) categoryLimit = cat.monthlyLimit;
+      const cat = await Category.findById(categoryId);
+      if (cat) categoryLimit = cat.monthlyLimit;
     }
 
     // Real-Time Balance (Unchanged logic)
     const now = new Date();
     const currStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const currEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-    
+
     const currentStats = await FinancialRecord.aggregate([
       { $match: { date: { $gte: currStart, $lte: currEnd } } },
       { $group: { _id: "$type", total: { $sum: "$amount" } } }
@@ -80,26 +80,26 @@ const addTransaction = async (req, res) => {
 
     // 1. If no ID provided, try to find by Name & Type
     if (!finalCategoryId) {
-        let cat = await Category.findOne({ categoryName: categoryName, categoryType: type });
-        
-        // 2. If not found by name, just grab the FIRST available category of that type
-        if (!cat) {
-            cat = await Category.findOne({ categoryType: type });
-        }
+      let cat = await Category.findOne({ categoryName: categoryName, categoryType: type });
 
-        // 3. If STILL no category exists, create a default one
-        if (!cat) {
-             cat = await Category.create({
-                userId: userId || "65d4f8a9e4b0a1b2c3d4e5f6",
-                categoryName: "Others",
-                categoryType: type,
-                icon: "help",
-                color: "#CCCCCC",
-                isDefault: true
-             });
-        }
-        
-        finalCategoryId = cat._id;
+      // 2. If not found by name, just grab the FIRST available category of that type
+      if (!cat) {
+        cat = await Category.findOne({ categoryType: type });
+      }
+
+      // 3. If STILL no category exists, create a default one
+      if (!cat) {
+        cat = await Category.create({
+          userId: userId || "65d4f8a9e4b0a1b2c3d4e5f6",
+          categoryName: "Others",
+          categoryType: type,
+          icon: "help",
+          color: "#CCCCCC",
+          isDefault: true
+        });
+      }
+
+      finalCategoryId = cat._id;
     }
 
     const newRecord = await FinancialRecord.create({
@@ -108,10 +108,10 @@ const addTransaction = async (req, res) => {
       type,
       date,
       description,
-      categoryId: finalCategoryId, 
+      categoryId: finalCategoryId,
       isRecurring: isRecurring || false,
       recurringFrequency: recurringFrequency || 'never',
-      receiptUrl: "" 
+      receiptUrl: ""
     });
 
     res.status(201).json(newRecord);
@@ -123,18 +123,18 @@ const addTransaction = async (req, res) => {
 
 // @desc    Update Transaction
 const updateTransaction = async (req, res) => {
-    try {
-        const updatedRecord = await FinancialRecord.findByIdAndUpdate(req.params.id, req.body, { new: true });
-        res.status(200).json(updatedRecord);
-    } catch (error) { res.status(500).json({ message: error.message }); }
+  try {
+    const updatedRecord = await FinancialRecord.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    res.status(200).json(updatedRecord);
+  } catch (error) { res.status(500).json({ message: error.message }); }
 };
 
 // @desc    Delete Transaction
 const deleteTransaction = async (req, res) => {
-    try {
-        await FinancialRecord.findByIdAndDelete(req.params.id);
-        res.status(200).json({ message: "Deleted successfully" });
-    } catch (error) { res.status(500).json({ message: error.message }); }
+  try {
+    await FinancialRecord.findByIdAndDelete(req.params.id);
+    res.status(200).json({ message: "Deleted successfully" });
+  } catch (error) { res.status(500).json({ message: error.message }); }
 };
 
 module.exports = { getTransactions, addTransaction, updateTransaction, deleteTransaction };
