@@ -5,8 +5,9 @@ const Category = require('../../infrastructure/models/Category');
 const getTransactions = async (req, res) => {
   try {
     const { month, year, type, categoryId, search, minAmount, maxAmount } = req.query;
+    const userId = req.user._id;
 
-    let listQuery = { type: type || 'income' };
+    let listQuery = { type: type || 'income', userId: userId }; // Filter by User
 
     // 1. Category Filter
     if (categoryId) listQuery.categoryId = categoryId;
@@ -50,7 +51,7 @@ const getTransactions = async (req, res) => {
     const currEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
     const currentStats = await FinancialRecord.aggregate([
-      { $match: { date: { $gte: currStart, $lte: currEnd } } },
+      { $match: { userId: userId, date: { $gte: currStart, $lte: currEnd } } },
       { $group: { _id: "$type", total: { $sum: "$amount" } } }
     ]);
     const currIncome = currentStats.find(s => s._id === 'income')?.total || 0;
@@ -73,7 +74,8 @@ const getTransactions = async (req, res) => {
 // @desc    Add Transaction
 const addTransaction = async (req, res) => {
   try {
-    const { userId, amount, categoryName, categoryId, date, description, type, isRecurring, recurringFrequency } = req.body;
+    const userId = req.user._id; // Get from Auth Middleware
+    const { amount, categoryName, categoryId, date, description, type, isRecurring, recurringFrequency } = req.body;
 
     // Handle File Upload
     let receiptUrl = "";

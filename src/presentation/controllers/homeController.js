@@ -121,33 +121,52 @@ const SharedExpense = require('../../infrastructure/models/SharedExpense');
 // @route   GET /api/home
 const getHomeData = async (req, res) => {
   try {
-    // 1. CALCULATE WALLET BALANCE (All Time)
+    const userId = req.user._id;
+
+    // 1. CALCULATE WALLET BALANCE (All Time) for Logged In User
     const balanceStats = await FinancialRecord.aggregate([
+      { $match: { userId: userId } }, // Filter by User
       { $group: { _id: "$type", total: { $sum: "$amount" } } }
     ]);
+
     const totalIncome = balanceStats.find(s => s._id === 'income')?.total || 0;
     const totalExpense = balanceStats.find(s => s._id === 'expense')?.total || 0;
     const currentBalance = totalIncome - totalExpense;
 
+    // Calculate Savings Percentage for Progress Bar
+    // (Current Balance / Total Income) * 100
+    let savingsPercentage = 0;
+    if (totalIncome > 0) {
+      savingsPercentage = Math.round((currentBalance / totalIncome) * 100);
+    }
+    // Clamp between 0 and 100
+    if (savingsPercentage < 0) savingsPercentage = 0;
+    if (savingsPercentage > 100) savingsPercentage = 100;
 
-    // 2. FETCH RECENT TRANSACTIONS (Limit 5)
+
+    // 2. FETCH RECENT TRANSACTIONS (Limit 5) for Logged In User
     // We populate 'categoryId' to get the icon and color dynamically
-    const recentTransactions = await FinancialRecord.find()
+    const recentTransactions = await FinancialRecord.find({ userId: userId })
       .sort({ date: -1 }) // Newest first
       .limit(5)
       .populate('categoryId', 'categoryName icon color');
 
     // Format transactions for the Frontend
-    const formattedTransactions = recentTransactions.map(t => ({
-      id: t._id,
-      title: t.description,
-      date: new Date(t.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
-      amount: t.amount,
-      type: t.type,
-      tag: t.categoryId ? t.categoryId.categoryName : 'General', // Dynamic Tag
-      icon: t.categoryId ? t.categoryId.icon : 'star',           // Dynamic Icon
-      color: t.categoryId ? t.categoryId.color : '#00D09E'       // Dynamic Color
-    }));
+    const formattedTransactions = recentTransactions.map(t => {
+      const dateObj = new Date(t.date);
+      const dateStr = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+      return {
+        id: t._id,
+        title: t.description,
+        date: dateStr,
+        amount: t.type === 'expense' ? -Math.abs(t.amount) : t.amount,
+        type: t.type,
+        tag: t.categoryId ? t.categoryId.categoryName : 'General', // Dynamic Tag
+        icon: t.categoryId ? t.categoryId.icon : 'star',           // Dynamic Icon
+        color: t.categoryId ? t.categoryId.color : '#00D09E'       // Dynamic Color
+      };
+    });
 
 
     // 3. GOALS & SHARED (Placeholder for now until you build those screens)
@@ -172,6 +191,7 @@ const getHomeData = async (req, res) => {
         balance: currentBalance,
         totalIncome: totalIncome,
         totalExpense: totalExpense,
+        savingsPercentage: savingsPercentage, // Send % for Progress Bar
         currency: 'Rs.',
         transactions: formattedTransactions
       },

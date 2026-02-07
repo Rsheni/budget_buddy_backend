@@ -9,12 +9,13 @@ const {
   deleteTransaction
 } = require('../controllers/transactionController');
 
+const { protect } = require('../middlewares/authMiddleware');
 const upload = require('../middlewares/uploadMiddleware');
 
 // Define Routes
-router.get('/', getTransactions);         // Matches /api/transactions
-router.post('/add', upload.single('bill'), addTransaction);      // Matches /api/transactions/add
-router.put('/:id', updateTransaction);    // Matches /api/transactions/:id
-router.delete('/:id', deleteTransaction); // Matches /api/transactions/:id
+router.get('/', protect, getTransactions);         // Matches /api/transactions
+router.post('/add', protect, upload.single('bill'), addTransaction);      // Matches /api/transactions/add
+router.put('/:id', protect, updateTransaction);    // Matches /api/transactions/:id
+router.delete('/:id', protect, deleteTransaction); // Matches /api/transactions/:id
 
 module.exports = router;
