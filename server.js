@@ -15,6 +15,7 @@ const app = express();
 // 4. Middleware (Allows JSON & Cross-Origin requests)
 app.use(express.json());
 app.use(cors());
+app.use('/uploads', express.static('uploads')); // Serve uploaded files
 
 // 5. Routes
 app.use('/api/auth', require('./src/presentation/routes/authRoutes'));

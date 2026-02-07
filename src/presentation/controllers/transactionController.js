@@ -75,19 +75,27 @@ const addTransaction = async (req, res) => {
   try {
     const { userId, amount, categoryName, categoryId, date, description, type, isRecurring, recurringFrequency } = req.body;
 
+    // Handle File Upload
+    let receiptUrl = "";
+    if (req.file) {
+      // Construct URL based on server address (or use relative path)
+      // For simplicity, we store the relative path which the frontend can prepend base_url to
+      receiptUrl = `uploads/bills/${req.file.filename}`;
+    }
+
+    // Parse Boolean for Multipart Form Data
+    const isRecurringBool = isRecurring === 'true' || isRecurring === true;
+
     // --- LOGIC FIX: Ensure we have a VALID Category ID ---
     let finalCategoryId = categoryId;
 
     // 1. If no ID provided, try to find by Name & Type
     if (!finalCategoryId) {
+      // ... (Existing Category Logic same as before) ...
       let cat = await Category.findOne({ categoryName: categoryName, categoryType: type });
-
-      // 2. If not found by name, just grab the FIRST available category of that type
       if (!cat) {
         cat = await Category.findOne({ categoryType: type });
       }
-
-      // 3. If STILL no category exists, create a default one
       if (!cat) {
         cat = await Category.create({
           userId: userId || "65d4f8a9e4b0a1b2c3d4e5f6",
@@ -98,7 +106,6 @@ const addTransaction = async (req, res) => {
           isDefault: true
         });
       }
-
       finalCategoryId = cat._id;
     }
 
@@ -109,9 +116,9 @@ const addTransaction = async (req, res) => {
       date,
       description,
       categoryId: finalCategoryId,
-      isRecurring: isRecurring || false,
+      isRecurring: isRecurringBool,
       recurringFrequency: recurringFrequency || 'never',
-      receiptUrl: ""
+      receiptUrl: receiptUrl
     });
 
     res.status(201).json(newRecord);
