@@ -29,7 +29,13 @@ const UserSchema = new mongoose.Schema({
   },
   isVerified: {
     type: Boolean,
-    default: true // Direct access
+    default: false
+  },
+  verificationPin: {
+    type: String,
+  },
+  pinExpiresAt: {
+    type: Date,
   },
   lastLogin: {
     type: Date,

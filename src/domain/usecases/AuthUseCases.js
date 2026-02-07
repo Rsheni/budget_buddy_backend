@@ -7,6 +7,12 @@ const generateToken = (id) => {
     });
 };
 
+const emailService = require('../../infrastructure/services/emailService');
+
+const generatePin = () => {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
 const register = async (userData) => {
     const { name, email, password, phoneNumber } = userData;
 
@@ -15,15 +21,42 @@ const register = async (userData) => {
         throw new Error('User already exists');
     }
 
+    const pin = generatePin();
+    const pinExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
     const user = await User.create({
         name,
         email,
         password,
         phoneNumber,
-        isVerified: true
+        isVerified: false,
+        verificationPin: pin,
+        pinExpiresAt
     });
 
     if (user) {
+        await emailService.sendVerificationCode(user.email, pin);
+
+        return {
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            isVerified: false,
+            message: "Verification PIN sent to email"
+        };
+    } else {
+        throw new Error('Invalid user data');
+    }
+};
+
+const verifyPin = async (email, pin) => {
+    const user = await User.findOne({ email });
+
+    if (!user) {
+        throw new Error('User not found');
+    }
+
+    if (user.isVerified) {
         return {
             _id: user._id,
             name: user.name,
@@ -31,15 +64,39 @@ const register = async (userData) => {
             isVerified: true,
             token: generateToken(user._id),
         };
-    } else {
-        throw new Error('Invalid user data');
     }
+
+    if (user.verificationPin !== pin) {
+        throw new Error('Invalid PIN');
+    }
+
+    if (user.pinExpiresAt < Date.now()) {
+        throw new Error('PIN expired');
+    }
+
+    user.isVerified = true;
+    user.verificationPin = undefined;
+    user.pinExpiresAt = undefined;
+    await user.save();
+
+    return {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        isVerified: true,
+        token: generateToken(user._id),
+    };
 };
 
 const login = async (email, password) => {
     const user = await User.findOne({ email });
 
     if (user && (await user.matchPassword(password))) {
+        if (!user.isVerified) {
+            // Optional: Resend PIN here if needed, or just throw error
+            throw new Error('Account not verified. Please verify your email.');
+        }
+
         return {
             _id: user._id,
             name: user.name,
@@ -55,4 +112,5 @@ const login = async (email, password) => {
 module.exports = {
     register,
     login,
+    verifyPin
 };
