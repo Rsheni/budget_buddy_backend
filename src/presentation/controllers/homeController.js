@@ -169,12 +169,38 @@ const getHomeData = async (req, res) => {
     });
 
 
-    // 3. GOALS & SHARED (Placeholder for now until you build those screens)
-    // In a real app, you would query FinancialGoal.find() and SharedExpense.find() here.
+    // 3. FETCH GOALS for Logged In User
+    const goals = await FinancialGoal.find({ userId: userId });
+    
+    let totalSavings = 0;
+    const goalList = goals.map(g => {
+      totalSavings += g.currentAmount;
+      const percentage = Math.min(100, Math.round((g.currentAmount / g.targetAmount) * 100));
+      
+      // Map icons based on category
+      let iconType = 'wallet-outline';
+      if (g.category === 'Travel') iconType = 'beach';
+      else if (g.category === 'Tech') iconType = 'laptop';
+      else if (g.category === 'Car') iconType = 'car-outline';
+      else if (g.category === 'Home') iconType = 'home-outline';
+
+      return {
+        id: g._id,
+        title: g.goalName,
+        savedAmount: g.currentAmount,
+        targetAmount: g.targetAmount,
+        percentage: percentage,
+        iconType: iconType,
+        daysRemaining: g.targetDate 
+          ? `${Math.ceil((new Date(g.targetDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days remaining` 
+          : 'No deadline set'
+      };
+    });
+
     const goalsData = {
-      totalSavings: 0,
+      totalSavings: totalSavings,
       currency: 'Rs.',
-      list: []
+      list: goalList
     };
 
     const sharedData = {

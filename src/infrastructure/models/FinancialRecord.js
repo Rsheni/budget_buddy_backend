@@ -9,7 +9,7 @@ const FinancialRecordSchema = new mongoose.Schema({
   categoryId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Category',
-    required: true
+    required: false
   },
   amount: {
     type: Number,
