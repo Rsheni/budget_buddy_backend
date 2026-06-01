@@ -24,6 +24,10 @@ const SharedExpenseSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
+  receiptImage: {
+    type: String,
+    default: ""
+  },
   splitMethod: {
     type: String,
     enum: ['equal', 'exact', 'percentage'],

@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const GroupSchema = new mongoose.Schema({
-  // The Single Admin/Owner of the group
+  // The Single Admin of the group
   adminId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -11,6 +11,10 @@ const GroupSchema = new mongoose.Schema({
     type: String,
     required: true,
     trim: true
+  },
+  coverPhoto: {
+    type: String,
+    default: ""
   },
   description: {
     type: String,

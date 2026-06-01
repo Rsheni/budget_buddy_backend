@@ -28,6 +28,20 @@ const SettlementSchema = new mongoose.Schema({
     type: String,
     enum: ['pending', 'completed', 'declined'],
     default: 'completed'
+  },
+  paymentMethod: {
+    type: String,
+    enum: ['cash', 'bank'],
+    default: 'cash'
+  },
+  notes: {
+    type: String,
+    default: ""
+  },
+  bankDetails: {
+    accountNumber: String,
+    bankName: String,
+    branchName: String
   }
 }, { timestamps: true });
 
