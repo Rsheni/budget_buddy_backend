@@ -22,6 +22,7 @@ app.use('/api/auth', require('./src/presentation/routes/authRoutes'));
 app.use('/api/home', require('./src/presentation/routes/homeRoutes'));
 app.use('/api/transactions', require('./src/presentation/routes/transactionRoutes'));
 app.use('/api/categories', require('./src/presentation/routes/categoryRoutes'));
+app.use('/api/goals', require('./src/presentation/routes/goalRoutes'));
 app.use('/api/groups', require('./src/presentation/routes/groupRoutes'));
 
 // 5. Base Route (Health Check)
