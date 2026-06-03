@@ -9,13 +9,12 @@ const FinancialRecordSchema = new mongoose.Schema({
   categoryId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Category',
-    required: true
+    required: false
   },
   amount: {
     type: Number,
     required: true
   },
-  // Is this money coming in or going out?
   type: {
     type: String,
     enum: ['income', 'expense'],
@@ -30,9 +29,19 @@ const FinancialRecordSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  // ✨ NEW FIELDS
   receiptUrl: {
     type: String,
     default: ""
+  },
+  isRecurring: {
+    type: Boolean,
+    default: false
+  },
+  recurringFrequency: {
+    type: String,
+    enum: ['daily', 'weekly', 'monthly', 'never'],
+    default: 'never'
   }
 }, { timestamps: true });
 

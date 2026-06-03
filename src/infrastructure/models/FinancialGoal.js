@@ -34,6 +34,10 @@ const FinancialGoalSchema = new mongoose.Schema({
     type: String,
     enum: ['low', 'medium', 'high'],
     default: 'medium'
+  },
+  category: {
+    type: String,
+    default: 'General'
   }
 }, { timestamps: true });
 
