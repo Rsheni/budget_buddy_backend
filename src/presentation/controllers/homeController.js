@@ -116,6 +116,9 @@
 const FinancialRecord = require('../../infrastructure/models/FinancialRecord');
 const FinancialGoal = require('../../infrastructure/models/FinancialGoal');
 const SharedExpense = require('../../infrastructure/models/SharedExpense');
+const Group = require('../../infrastructure/models/Group');
+const GroupMember = require('../../infrastructure/models/GroupMember');
+const GroupInvitation = require('../../infrastructure/models/GroupInvitation');
 
 // @desc    Get Real Dashboard Data (Personal, Goals, Shared)
 // @route   GET /api/home
@@ -203,11 +206,86 @@ const getHomeData = async (req, res) => {
       list: goalList
     };
 
+    // 3. FETCH SHARED GROUPS AND CALCULATE BALANCES
+    const memberships = await GroupMember.find({ userId: userId, isActive: true }).select('groupId');
+    const groupIds = memberships.map(m => m.groupId);
+
+    const userGroups = await Group.find({ _id: { $in: groupIds }, isActive: true })
+        .populate('adminId', 'name email profilePicture')
+        .lean();
+
+    let youOweTotal = 0;
+    let owedToYouTotal = 0;
+    const formattedGroups = [];
+
+    for (const group of userGroups) {
+        // Fetch expenses
+        const expenses = await SharedExpense.find({ groupId: group._id }).lean();
+        const totalSpend = expenses.reduce((sum, exp) => sum + (exp.totalAmount || 0), 0);
+        
+        // Count active members
+        const activeMembers = await GroupMember.find({ groupId: group._id, isActive: true }).lean();
+        const memberCount = activeMembers.length;
+        const userShare = memberCount > 0 ? totalSpend / memberCount : 0;
+        
+        // Paid by current user
+        const userPaid = expenses
+            .filter(exp => exp.addedBy.toString() === userId.toString())
+            .reduce((sum, exp) => sum + (exp.totalAmount || 0), 0);
+            
+        const balance = userPaid - userShare;
+        const type = balance >= 0 ? 'receive' : 'owe';
+        const absoluteBalance = Math.abs(balance);
+
+        if (type === 'owe') {
+            youOweTotal += absoluteBalance;
+        } else {
+            owedToYouTotal += absoluteBalance;
+        }
+
+        const isCreator = group.adminId._id.toString() === userId.toString();
+
+        formattedGroups.push({
+            id: group._id,
+            name: group.groupName,
+            role: isCreator ? 'Group Creator' : 'Member',
+            userOwes: type === 'owe' ? Math.round(absoluteBalance) : 0,
+            totalSpend: totalSpend,
+            received: userPaid
+        });
+    }
+
+    // Fetch pending invitations for user
+    const orConditions = [];
+    if (req.user.email) {
+      orConditions.push({ emailOrPhone: { $regex: new RegExp(`^${req.user.email}$`, 'i') } });
+    }
+    if (req.user.phoneNumber) {
+      orConditions.push({ emailOrPhone: req.user.phoneNumber });
+    }
+
+    let invitations = [];
+    if (orConditions.length > 0) {
+      invitations = await GroupInvitation.find({
+        status: 'pending',
+        $or: orConditions
+      })
+      .populate('groupId', 'groupName coverPhoto')
+      .populate('invitedBy', 'name')
+      .lean();
+    }
+
     const sharedData = {
-      youOwe: 0,
-      owedToYou: 0,
+      youOwe: Math.round(youOweTotal),
+      owedToYou: Math.round(owedToYouTotal),
       currency: 'Rs.',
-      groups: []
+      groups: formattedGroups,
+      invitations: invitations.map(inv => ({
+        id: inv._id,
+        groupName: inv.groupId ? inv.groupId.groupName : 'Unknown Group',
+        invitedBy: inv.invitedBy ? inv.invitedBy.name : 'Someone',
+        code: inv.code
+      }))
     };
 
 

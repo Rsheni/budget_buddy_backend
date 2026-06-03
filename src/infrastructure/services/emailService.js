@@ -10,7 +10,7 @@ const transporter = nodemailer.createTransport({
     }
 });
 
-const sendGroupInvitationEmail = async (toEmail, adminName, groupName) => {
+const sendGroupInvitationEmail = async (toEmail, adminName, groupName, invitationCode) => {
     try {
         const mailOptions = {
             from: `"BudgetBuddy" <${process.env.EMAIL_FROM || 'no-reply@budgetbuddy.com'}>`,
@@ -53,6 +53,7 @@ const sendGroupInvitationEmail = async (toEmail, adminName, groupName) => {
             You've been invited to join the <span class="cyan-text">${groupName}</span> group on BudgetBuddy. 
             Start tracking shared expenses and settling debts easily.
         </p>
+        <p class="invitation-code">Invitation Code: <strong>${invitationCode}</strong></p>
         <a href="https://budgetbuddy.example.com" class="cta-button">Join Group & Download App</a>
         
         <h2 class="features-title">With BudgetBuddy, you can:</h2>
@@ -81,6 +82,43 @@ const sendGroupInvitationEmail = async (toEmail, adminName, groupName) => {
     }
 };
 
+// Send verification code email
+const sendVerificationCode = async (toEmail, pin) => {
+    try {
+        const mailOptions = {
+            from: `"BudgetBuddy" <${process.env.EMAIL_FROM || 'no-reply@budgetbuddy.com'}>`,
+            to: toEmail,
+            subject: `Your verification code`,
+            html: `
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #F9FAFB; margin: 0; padding: 20px; color: #1F2937; }
+        .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 20px; padding: 24px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+        .title { font-size: 22px; font-weight: 900; text-align: center; margin-bottom: 15px; }
+        .code { font-size: 18px; font-weight: bold; text-align: center; margin: 20px 0; color: #00E5FF; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">Your verification code</h1>
+        <p class="code">${pin}</p>
+        <p>This code will expire in 10 minutes.</p>
+    </div>
+</body>
+</html>
+            `,
+        };
+        const info = await transporter.sendMail(mailOptions);
+        console.log("Verification email sent: " + info.response);
+        return info;
+    } catch (error) {
+        console.error("Error sending verification email:", error);
+    }
+};
+
 module.exports = {
-    sendGroupInvitationEmail
+    sendGroupInvitationEmail,
+    sendVerificationCode
 };

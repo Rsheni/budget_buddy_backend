@@ -5,6 +5,7 @@ const SharedExpense = require('../../infrastructure/models/SharedExpense');
 const ExpenseSplit = require('../../infrastructure/models/ExpenseSplit');
 const GroupInvitation = require('../../infrastructure/models/GroupInvitation');
 const { sendGroupInvitationEmail } = require('../../infrastructure/services/emailService');
+const { generateInvitationCode } = require('../../infrastructure/utils/invitationCode');
 
 const createGroup = async (req, res) => {
     try {
@@ -59,20 +60,31 @@ const createGroup = async (req, res) => {
                         });
                     }
                     
-                    if (identifier.includes('@')) {
-                        await sendGroupInvitationEmail(identifier, req.user.name, groupName);
-                    }
+                    // Generate a unique invitation code
+            const invitationCode = await generateInvitationCode();
+            // Store invitation with code
+            await GroupInvitation.create({
+                groupId: newGroup._id,
+                emailOrPhone: identifier,
+                code: invitationCode,
+                status: 'pending',
+                invitedBy: adminId
+            });
+            // Send email with code
+            await sendGroupInvitationEmail(identifier, req.user.name, groupName, invitationCode);
                 } else if (!invitedUser) {
-                    // Store as pending invitation
-                    await GroupInvitation.create({
-                        groupId: newGroup._id,
-                        emailOrPhone: identifier,
-                        status: 'pending',
-                        invitedBy: adminId
-                    });
-                    if (identifier.includes('@')) {
-                        await sendGroupInvitationEmail(identifier, req.user.name, groupName);
-                    }
+                    // Generate a unique invitation code
+            const invitationCode = await generateInvitationCode();
+            // Store invitation with code
+            await GroupInvitation.create({
+                groupId: newGroup._id,
+                emailOrPhone: identifier,
+                code: invitationCode,
+                status: 'pending',
+                invitedBy: adminId
+            });
+            // Send email with code
+            await sendGroupInvitationEmail(identifier, req.user.name, groupName, invitationCode);
                 }
             }
         }
@@ -114,23 +126,81 @@ const getGroups = async (req, res) => {
                 profilePicture: m.userId?.profilePicture || 'https://ui-avatars.com/api/?name=' + (m.userId?.name || 'U')
             }));
 
-            // Calculate real financial data based on expenses
+            // Fetch all expenses in the group
             const expenses = await SharedExpense.find({ groupId: group._id }).lean();
             const totalSpend = expenses.reduce((sum, exp) => sum + (exp.totalAmount || 0), 0);
+
+            // Fetch all expense splits in the group
+            const expenseIds = expenses.map(e => e._id);
+            const splits = await ExpenseSplit.find({ sharedExpenseId: { $in: expenseIds } }).lean();
             
-            // Assuming equal split among active members
-            const memberCount = members.length;
-            const userShare = memberCount > 0 ? totalSpend / memberCount : 0;
-            
-            // Calculate how much the current user paid
-            const userPaid = expenses
-                .filter(exp => exp.addedBy.toString() === userId.toString())
-                .reduce((sum, exp) => sum + (exp.totalAmount || 0), 0);
-                
-            // Balance = Paid - Share. If positive, they are owed. If negative, they owe.
-            const balance = userPaid - userShare;
-            const type = balance >= 0 ? 'receive' : 'owe';
-            const absoluteBalance = Math.abs(balance);
+            // Fetch all settlements in the group
+            const Settlement = require('../../infrastructure/models/Settlement');
+            const settlements = await Settlement.find({ groupId: group._id, status: 'completed' }).lean();
+
+            // Calculate debts between each pair
+            const debts = {};
+            const memberIds = [userId.toString()];
+            members.forEach(m => {
+                if (m.userId) {
+                    const mId = m.userId._id.toString();
+                    if (!memberIds.includes(mId)) memberIds.push(mId);
+                }
+            });
+
+            memberIds.forEach(id1 => {
+                debts[id1] = {};
+                memberIds.forEach(id2 => {
+                    debts[id1][id2] = 0;
+                });
+            });
+
+            // Accumulate unpaid splits
+            for (const exp of expenses) {
+                const payerIdStr = exp.addedBy.toString();
+                if (!memberIds.includes(payerIdStr)) continue;
+
+                const expSplits = splits.filter(s => s.sharedExpenseId.toString() === exp._id.toString());
+                for (const split of expSplits) {
+                    const participantIdStr = split.userId.toString();
+                    if (!memberIds.includes(participantIdStr)) continue;
+                    if (participantIdStr !== payerIdStr && !split.isPaid) {
+                        debts[participantIdStr][payerIdStr] += split.splitAmount;
+                    }
+                }
+            }
+
+            // Subtract settlements
+            for (const set of settlements) {
+                const pIdStr = set.payerId.toString();
+                const rIdStr = set.receiverId.toString();
+                if (debts[pIdStr] && debts[pIdStr][rIdStr] !== undefined) {
+                    debts[pIdStr][rIdStr] -= set.amount;
+                }
+            }
+
+            // Consolidate pairwise debts for the current user
+            let youOweAmount = 0;
+            let receiveAmount = 0;
+            const uid = userId.toString();
+
+            memberIds.forEach(otherId => {
+                if (otherId !== uid) {
+                    const net = debts[uid][otherId] - debts[otherId][uid];
+                    if (net > 0.01) {
+                        youOweAmount += net; // I owe them
+                    } else if (net < -0.01) {
+                        receiveAmount += Math.abs(net); // They owe me
+                    }
+                }
+            });
+
+            let type = 'settled';
+            if (youOweAmount > receiveAmount) {
+                type = 'owe';
+            } else if (receiveAmount > youOweAmount) {
+                type = 'receive';
+            }
 
             return {
                 id: group._id,
@@ -140,10 +210,10 @@ const getGroups = async (req, res) => {
                 creatorId: group.adminId._id,
                 members: formattedMembers,
                 type: type,
-                youOweAmount: type === 'owe' ? absoluteBalance : 0,
+                youOweAmount: youOweAmount,
                 totalSpend: totalSpend,
-                receiveAmount: type === 'receive' ? absoluteBalance : 0,
-                receivedAmount: userPaid // How much they actually put into the group
+                receiveAmount: receiveAmount,
+                receivedAmount: receiveAmount
             };
         }));
 
@@ -551,10 +621,12 @@ const updateGroup = async (req, res) => {
         const { groupId } = req.params;
         const { groupName } = req.body;
         
-        // Ensure user is part of the group (or admin, depending on requirements. For now allow any active member)
-        const isMember = await GroupMember.findOne({ groupId, userId: req.user._id, isActive: true });
-        if (!isMember) {
-            return res.status(403).json({ message: "You do not have permission to update this group" });
+        // Ensure user is the group admin
+        const group = await Group.findById(groupId);
+        if (!group) return res.status(404).json({ message: "Group not found" });
+
+        if (group.adminId.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: "Only the group admin can update group settings" });
         }
 
         const updateData = {};
@@ -625,9 +697,8 @@ const addMembers = async (req, res) => {
         const group = await Group.findById(groupId);
         if (!group) return res.status(404).json({ message: "Group not found" });
 
-        const isMember = await GroupMember.findOne({ groupId, userId: req.user._id, isActive: true });
-        if (!isMember) {
-            return res.status(403).json({ message: "You do not have permission to add members" });
+        if (group.adminId.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: "Only the group admin can add members" });
         }
 
         let parsedMembers = [];
@@ -658,21 +729,22 @@ const addMembers = async (req, res) => {
             } else {
                 const existingInv = await GroupInvitation.findOne({ groupId, emailOrPhone: identifier, status: 'pending' });
                 if (!existingInv) {
+                    const invitationCode = await generateInvitationCode();
                     await GroupInvitation.create({
                         groupId,
                         emailOrPhone: identifier,
+                        code: invitationCode,
                         status: 'pending',
                         invitedBy: req.user._id
                     });
                     invited.push(identifier);
+                    // Send invitation email if email
+                    if (identifier.includes('@')) {
+                        await sendGroupInvitationEmail(identifier, req.user.name, group.groupName, invitationCode);
+                    }
                 }
             }
-
-            if (identifier.includes('@')) {
-                await sendGroupInvitationEmail(identifier, req.user.name, group.groupName);
-            }
         }
-
         res.status(200).json({ message: "Members processed", added, invited });
     } catch (error) {
         console.error('Add members error:', error);
@@ -745,6 +817,143 @@ const removeGroupExpense = async (req, res) => {
     }
 };
 
+const getPendingInvitations = async (req, res) => {
+    try {
+        const query = { status: 'pending' };
+        const orConditions = [];
+        if (req.user.email) {
+            orConditions.push({ emailOrPhone: { $regex: new RegExp(`^${req.user.email}$`, 'i') } });
+        }
+        if (req.user.phoneNumber) {
+            orConditions.push({ emailOrPhone: req.user.phoneNumber });
+        }
+        
+        if (orConditions.length === 0) {
+            return res.status(200).json({ invitations: [] });
+        }
+        
+        query.$or = orConditions;
+        
+        const invitations = await GroupInvitation.find(query)
+            .populate('groupId', 'groupName coverPhoto')
+            .populate('invitedBy', 'name')
+            .lean();
+            
+        res.status(200).json({
+            invitations: invitations.map(inv => ({
+                id: inv._id,
+                groupId: inv.groupId?._id,
+                groupName: inv.groupId?.groupName || 'Unknown Group',
+                coverPhoto: inv.groupId?.coverPhoto || '',
+                invitedBy: inv.invitedBy?.name || 'Someone',
+                code: inv.code
+            }))
+        });
+    } catch (error) {
+        console.error('Get pending invitations error:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+const acceptInvitation = async (req, res) => {
+    try {
+        const { code } = req.body;
+        if (!code) {
+            return res.status(400).json({ message: "Invitation code is required" });
+        }
+        
+        const invitation = await GroupInvitation.findOne({
+            code: code.trim(),
+            status: 'pending'
+        });
+        
+        if (!invitation) {
+            return res.status(400).json({ message: "Invalid or expired invitation code" });
+        }
+        
+        // Add user as member of the group
+        let member = await GroupMember.findOne({ groupId: invitation.groupId, userId: req.user._id });
+        if (!member) {
+            await GroupMember.create({
+                groupId: invitation.groupId,
+                userId: req.user._id,
+                isActive: true
+            });
+        } else {
+            member.isActive = true;
+            await member.save();
+        }
+        
+        // Update invitation status
+        invitation.status = 'accepted';
+        await invitation.save();
+        
+        const group = await Group.findById(invitation.groupId);
+        
+        res.status(200).json({
+            message: "Group invitation accepted successfully",
+            group
+        });
+    } catch (error) {
+        console.error('Accept invitation error:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+const cancelInvitation = async (req, res) => {
+    try {
+        const { groupId, invitationId } = req.params;
+        
+        const group = await Group.findById(groupId);
+        if (!group) return res.status(404).json({ message: "Group not found" });
+
+        if (group.adminId.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: "Only the group admin can cancel invitations" });
+        }
+
+        const invitation = await GroupInvitation.findById(invitationId);
+        if (!invitation) return res.status(404).json({ message: "Invitation not found" });
+
+        await GroupInvitation.findByIdAndDelete(invitationId);
+        res.status(200).json({ message: "Invitation cancelled successfully" });
+    } catch (error) {
+        console.error('Cancel invitation error:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+const deleteGroup = async (req, res) => {
+    try {
+        const { groupId } = req.params;
+        
+        const group = await Group.findById(groupId);
+        if (!group) return res.status(404).json({ message: "Group not found" });
+
+        if (group.adminId.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: "Only the group admin can delete the group" });
+        }
+
+        // Delete group related data
+        await GroupInvitation.deleteMany({ groupId });
+        await GroupMember.deleteMany({ groupId });
+        
+        const expenses = await SharedExpense.find({ groupId });
+        const expenseIds = expenses.map(e => e._id);
+        await ExpenseSplit.deleteMany({ sharedExpenseId: { $in: expenseIds } });
+        await SharedExpense.deleteMany({ groupId });
+        
+        const Settlement = require('../../infrastructure/models/Settlement');
+        await Settlement.deleteMany({ groupId });
+        
+        await Group.findByIdAndDelete(groupId);
+
+        res.status(200).json({ message: "Group deleted successfully" });
+    } catch (error) {
+        console.error('Delete group error:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
 module.exports = {
     createGroup,
     getGroups,
@@ -757,5 +966,9 @@ module.exports = {
     removeGroupExpense,
     getGroupBalances,
     createSettlement,
-    getGroupSettlements
+    getGroupSettlements,
+    getPendingInvitations,
+    acceptInvitation,
+    cancelInvitation,
+    deleteGroup
 };

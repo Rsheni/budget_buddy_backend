@@ -13,7 +13,11 @@ const {
     removeGroupExpense,
     getGroupBalances,
     createSettlement,
-    getGroupSettlements
+    getGroupSettlements,
+    getPendingInvitations,
+    acceptInvitation,
+    cancelInvitation,
+    deleteGroup
 } = require('../controllers/groupController');
 const multer = require('multer');
 const path = require('path');
@@ -38,6 +42,8 @@ const upload = multer({ storage: storage });
 
 router.post('/create', protect, upload.single('coverPhoto'), createGroup);
 router.get('/', protect, getGroups);
+router.get('/invitations/pending', protect, getPendingInvitations);
+router.post('/invitations/accept', protect, acceptInvitation);
 router.get('/:groupId/expenses', protect, getGroupExpenses);
 router.post('/:groupId/expenses', protect, upload.single('receipt'), addGroupExpense);
 router.delete('/:groupId/expenses/:expenseId', protect, removeGroupExpense);
@@ -51,5 +57,7 @@ router.get('/:groupId/settings', protect, getGroupSettings);
 router.put('/:groupId', protect, upload.single('coverPhoto'), updateGroup);
 router.post('/:groupId/members', protect, addMembers);
 router.delete('/:groupId/members/:memberId', protect, removeMember);
+router.delete('/:groupId/invitations/:invitationId', protect, cancelInvitation);
+router.delete('/:groupId', protect, deleteGroup);
 
 module.exports = router;
