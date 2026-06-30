@@ -37,6 +37,12 @@ const UserSchema = new mongoose.Schema({
   pinExpiresAt: {
     type: Date,
   },
+  resetPasswordPin: {
+    type: String,
+  },
+  resetPinExpiresAt: {
+    type: Date,
+  },
   lastLogin: {
     type: Date,
     default: Date.now

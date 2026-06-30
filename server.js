@@ -19,6 +19,8 @@ app.use('/uploads', express.static('uploads')); // Serve uploaded files
 
 // 5. Routes
 app.use('/api/auth', require('./src/presentation/routes/authRoutes'));
+app.use('/api/users', require('./src/presentation/routes/userRoutes'));
+app.use('/api/analytics', require('./src/presentation/routes/analyticsRoutes'));
 app.use('/api/home', require('./src/presentation/routes/homeRoutes'));
 app.use('/api/transactions', require('./src/presentation/routes/transactionRoutes'));
 app.use('/api/categories', require('./src/presentation/routes/categoryRoutes'));

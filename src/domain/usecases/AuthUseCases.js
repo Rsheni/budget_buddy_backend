@@ -109,8 +109,77 @@ const login = async (email, password) => {
     }
 };
 
+const forgotPassword = async (email) => {
+    const user = await User.findOne({ email });
+    if (!user) {
+        throw new Error('User not found');
+    }
+
+    const pin = generatePin();
+    const pinExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    user.resetPasswordPin = pin;
+    user.resetPinExpiresAt = pinExpiresAt;
+    await user.save();
+
+    await emailService.sendVerificationCode(user.email, pin);
+
+    return {
+        success: true,
+        message: "Reset code sent to email"
+    };
+};
+
+const verifyResetPin = async (email, pin) => {
+    const user = await User.findOne({ email });
+    if (!user) {
+        throw new Error('User not found');
+    }
+
+    if (!user.resetPasswordPin || user.resetPasswordPin !== pin) {
+        throw new Error('Invalid PIN');
+    }
+
+    if (user.resetPinExpiresAt < Date.now()) {
+        throw new Error('PIN expired');
+    }
+
+    return {
+        success: true,
+        message: "PIN verified successfully"
+    };
+};
+
+const resetPassword = async (email, pin, newPassword) => {
+    const user = await User.findOne({ email });
+    if (!user) {
+        throw new Error('User not found');
+    }
+
+    if (!user.resetPasswordPin || user.resetPasswordPin !== pin) {
+        throw new Error('Invalid PIN');
+    }
+
+    if (user.resetPinExpiresAt < Date.now()) {
+        throw new Error('PIN expired');
+    }
+
+    user.password = newPassword;
+    user.resetPasswordPin = undefined;
+    user.resetPinExpiresAt = undefined;
+    await user.save();
+
+    return {
+        success: true,
+        message: "Password reset successfully"
+    };
+};
+
 module.exports = {
     register,
     login,
-    verifyPin
+    verifyPin,
+    forgotPassword,
+    verifyResetPin,
+    resetPassword
 };

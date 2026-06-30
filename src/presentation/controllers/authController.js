@@ -37,8 +37,47 @@ const loginUser = async (req, res) => {
     }
 };
 
+// @desc    Forgot password - send reset PIN
+// @route   POST /api/auth/forgot-password
+const forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+        const result = await authUseCases.forgotPassword(email);
+        res.status(200).json(result);
+    } catch (error) {
+        res.status(400).json({ message: error.message });
+    }
+};
+
+// @desc    Verify reset PIN
+// @route   POST /api/auth/verify-reset-pin
+const verifyResetPin = async (req, res) => {
+    try {
+        const { email, pin } = req.body;
+        const result = await authUseCases.verifyResetPin(email, pin);
+        res.status(200).json(result);
+    } catch (error) {
+        res.status(400).json({ message: error.message });
+    }
+};
+
+// @desc    Reset password
+// @route   POST /api/auth/reset-password
+const resetPassword = async (req, res) => {
+    try {
+        const { email, pin, newPassword } = req.body;
+        const result = await authUseCases.resetPassword(email, pin, newPassword);
+        res.status(200).json(result);
+    } catch (error) {
+        res.status(400).json({ message: error.message });
+    }
+};
+
 module.exports = {
     registerUser,
     loginUser,
-    verifyEmailPin
+    verifyEmailPin,
+    forgotPassword,
+    verifyResetPin,
+    resetPassword
 };
